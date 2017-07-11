@@ -1,0 +1,74 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+%matplotlib inline
+
+
+def py_compare_signal_at_peaks(list_heatmap_files=[], check_files=True, sort_on_id=True, left_edge=-40, right_edge=40, plot_boxplot=True):
+    """written by peteskene@gmail.com
+    
+    Quantitative comparison of signal from multiple datasets at peak called sites. This is for comparing datasets at the SAME
+    genomic locations, e.g. same set of peaks.
+
+    Takes a list of output_heatmap files from py_meta_analysis (NB heatmapfile_with_labels = True to give the column headers).
+    These are tab-delimited files, with the first six columns containing the bed info, the remaining columns containing
+    bedgraph scores at 1 bp intervals e.g. from -1000 to +1000  from the peak midpoint. Each row of the output_heatmap file
+    represents a single peak. For each row, script sums the score over the specified columns (e.g. -40 to + 40 bp relative
+    to peak midpoint). Script returns a dataframe of these summed values that includes the bedfile info from the output_heatmap files.
+    
+    _______________________________
+    list_heatmap_files: list of files provided as a string e.g. ['output_heatmap_A.bg_at_peaks.bed', 'output_heatmap_B.bg_at_peaks.bed']
+    check_files: check that the bed file info is the same between each input file to make sure same list of peak called sites; slows script
+    sort_on_id: sort each of the input files by the id column to make sure each input file has the peaks in the 	same order (default=True)
+    left_edge: co-ordinate upstream relative to peak midpoint to start summing from 
+    right_edge: co-ordinate downstream relative to peak midpoint to stop summing from
+    
+    example usage:
+    output_df = py_compare_signal_at_peaks(list_heatmap_files=['output_heatmap_A.bg_at_peaks.bed', 'output_heatmap_B.bg_at_peaks.bed'])
+    
+    returns dataframe
+    
+    """
+    
+    if type(list_heatmap_files)!=list:
+        return "list_heatmap_files needs to be provided as a list: e.g. ['output_heatmap_A.bg_at_peaks.bed', 'output_heatmap_B.bg_at_peaks.bed']"
+    for item in list_heatmap_files:
+        if type(item)!=str:
+            return "list_heatmap_files needs to be provided as a list of strings, at least one not entered as a string"
+    
+    print 'list_heatmap_files imported :'
+    print '\n'.join(list_heatmap_files)
+    print
+    
+    if check_files:
+    #check that the each of the files is at the same peak called sites by comparing the first six columns
+    #which contains the bed file info <chr> <start> <stop> <id> <score> <strand>
+    #sorts the files by id, just in case one file was ranked and the other wasn't
+    
+        for item in list_heatmap_files:
+            if not pd.read_csv(list_heatmap_files[0], sep='\t').sort_values(by='name').iloc[:,0:6].equals(pd.read_csv(item, sep='\t').sort_values(by='name').iloc[:,0:6]):
+                return 'Exiting... Bed file info is not the same between input files. Confirm that same peak called sites were used in each'
+        print 'files checked to have common bed file info'
+        print
+    
+    output_DF = pd.DataFrame(columns=['chrom','start','end','name','score','strand'])
+    list_column_names = [str(f) for f in range(left_edge, right_edge+1)]
+    
+    for item in list_heatmap_files:
+        print 'operating on: ' + item
+        if sort_on_id == False:
+            temp_df = pd.read_csv(item, sep='\t')
+        else:
+            temp_df = pd.read_csv(item, sep='\t').sort_values(by='name')
+    
+        temp_scores = temp_df.iloc[:,0:6]
+        
+        #sum scores for each row over the specified interval
+        temp_scores.insert(loc=6, column=item, value=temp_df[list_column_names].sum(axis=1))
+        
+        output_DF = pd.merge(output_DF, temp_scores, how='outer', on=['chrom','start','end','name','score','strand'])
+        
+    if plot_boxplot:
+        output_DF.boxplot(column=list_heatmap_files, return_type='axes', showfliers=False, rot=90)
+        
+        
+    return output_DF
